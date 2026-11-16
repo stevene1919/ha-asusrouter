@@ -7,7 +7,10 @@ This document provides developer guidelines, architecture references, testing pr
 ## 🏛️ Architecture & Upstream Tracking
 
 - **Upstream Repository:** [`Vaskivskyi/ha-asusrouter`](https://github.com/Vaskivskyi/ha-asusrouter)
+- **Local Fork Remote:** `origin -> git@github.com:stevene1919/ha-asusrouter.git`
+- **Upstream Tracking:** `upstream -> https://github.com/Vaskivskyi/ha-asusrouter.git`
 - **Local Fork Branch:** `feature/wan-switch` (branched from upstream `main`, v0.40.1)
+- **API & Firmware Architecture Docs:** [`docs/api_architecture.md`](docs/api_architecture.md)
 - **Dependencies:** `asusrouter>=1.21.0` (installed in `.venv`)
 - **Virtual Environment:** `homeassistant/custom_components/asusrouter/.venv` (managed with `uv`)
 
