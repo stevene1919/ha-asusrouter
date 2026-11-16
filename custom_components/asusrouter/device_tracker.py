@@ -5,8 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from homeassistant.components.device_tracker import SourceType
-from homeassistant.components.device_tracker.config_entry import ScannerEntity
+from homeassistant.components.device_tracker import ScannerEntity, SourceType
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
@@ -97,15 +96,19 @@ class ARDeviceEntity(ScannerEntity):
         self._attr_unique_id = f"{router.mac}_{client.mac_address}"
         self._attr_name = client.name or DEFAULT_DEVICE_NAME
         self._attr_capability_attributes = {
+            **(self._attr_capability_attributes or {}),
             "mac": client.mac_address,
             "name": self._attr_name,
         }
 
-        # Assign device info if set up
+        # Assign device info if set up, or empty DeviceInfo
+        # to avoid HA deprecation warning
         if router.client_device is True and client.device is True:
             self._attr_device_info = self._compile_device_info(
                 client.mac_address, client.name
             )
+        else:
+            self._attr_device_info = DeviceInfo()
 
     def _compile_device_info(
         self, mac_address: str, name: str | None
@@ -114,7 +117,7 @@ class ARDeviceEntity(ScannerEntity):
 
         return DeviceInfo(
             connections={(dr.CONNECTION_NETWORK_MAC, mac_address)},
-            default_name=name,
+            name=name,
             via_device=(DOMAIN, self._router.mac),
         )
 
@@ -131,10 +134,10 @@ class ARDeviceEntity(ScannerEntity):
         return SourceType.ROUTER
 
     @property
-    def is_connected(self) -> bool | None:
+    def is_connected(self) -> bool:
         """Device status."""
 
-        return self._client.state
+        return self._client.state is True
 
     @property
     def ip_address(self) -> str | None:

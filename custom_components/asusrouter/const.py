@@ -456,7 +456,10 @@ SENSORS_WLAN = {
 }
 
 # Defaults
-DEFAULT_SENSORS: dict[str, list[str]] = {CPU: [TOTAL]}
+DEFAULT_SENSORS: dict[str, list[str]] = {
+    CPU: [TOTAL],
+    DSL: ["datarate_down", "datarate_up"],
+}
 
 # <-- SENSORS
 

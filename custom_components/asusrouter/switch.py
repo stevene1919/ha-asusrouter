@@ -181,7 +181,7 @@ class ClientInternetSwitch(SwitchEntity):
 
         return DeviceInfo(
             connections={(dr.CONNECTION_NETWORK_MAC, self._mac)},
-            default_name=self._rule.name,
+            name=self._rule.name,
             via_device=(DOMAIN, self._router.mac),
         )
 

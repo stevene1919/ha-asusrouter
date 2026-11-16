@@ -686,6 +686,8 @@ class ARBridge:
                 datatype.value,
                 ex,
             )
+        if not sensors and datatype.value in DEFAULT_SENSORS:
+            sensors = DEFAULT_SENSORS[datatype.value]
         return sensors
 
     async def _get_sensors_ovpn_server(self) -> list[str]:
