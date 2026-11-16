@@ -48,7 +48,11 @@ def _get_reported(config_entry: ARConfigEntry) -> set[str] | None:
     ):
         return None
 
-    return {format_mac(str(mac)) for mac in coordinator.data}
+    return {
+        format_mac(str(mac))
+        for mac, client in coordinator.data.items()
+        if getattr(client, "online", True)
+    }
 
 
 def _get_client_mac(unique_id: str, prefix: str) -> str | None:

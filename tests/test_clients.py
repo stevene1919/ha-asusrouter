@@ -226,3 +226,13 @@ async def test_can_remove_client_unread() -> None:
     device = Mock(connections={(CONNECTION_NETWORK_MAC, FORGOTTEN)})
 
     assert can_remove_client(_get_entry(success=False), device) is False
+
+
+async def test_can_remove_client_offline() -> None:
+    """Test that an offline client can be removed."""
+
+    client = Mock(online=False)
+    data = {MacAddress.from_value(REPORTED): client}
+    device = Mock(connections={(CONNECTION_NETWORK_MAC, REPORTED)})
+
+    assert can_remove_client(_get_entry(data=data), device) is True
