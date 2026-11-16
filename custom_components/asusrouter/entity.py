@@ -352,7 +352,9 @@ class ARToggleEntity(AREntity):
                 bridge = getattr(
                     self.coordinator.config_entry.runtime_data, "bridge", None
                 )
-                return fn(state, self._device_data, bridge=bridge)
+                return fn(
+                    state, self._device_data, bridge=bridge
+                )  # type: ignore[call-arg]
         except (ValueError, TypeError):
             pass
         return fn(state, self._device_data)
