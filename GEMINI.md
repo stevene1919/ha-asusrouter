@@ -34,23 +34,23 @@ The Internet Switch exposes an on/off entity in Home Assistant to cleanly discon
 ### Command Architecture & CGI Protocol
 When toggling the switch:
 
-1. **Primary Method (`applyapp.cgi`):**
-   ```python
-   commands = {
-       "action_mode": "apply",
-       "rc_service": "start_wan" if is_connect else "stop_wan",
-       "wan_enable": "1" if is_connect else "0",
-       "freeze_duck": "0",
-   }
-   await self.api.async_api_command(commands)
-   ```
-2. **Why Not `device-map/wan_action.asp`:**
+1. **Model Detection & DSL Handling:**
+   - Detects whether the target device is a DSL router (e.g. `DSL-AX82U`) via `router.bridge.model` or `router._conf_name`.
+   - **DSL Routers:**
+     - Connect: `rc_service: "start_dslwan_if 0"`, `dslx_link_enable: "1"`, `wan_enable: "1"`, `wan0_enable: "1"`, `freeze_duck: "0"`
+     - Disconnect: `rc_service: "stop_dslwan_if 0"`, `dslx_link_enable: "0"`, `wan_enable: "0"`, `wan0_enable: "0"`, `freeze_duck: "0"`
+   - **Standard Ethernet Routers:**
+     - Connect: `rc_service: "start_wan"`, `wan_enable: "1"`, `wan0_enable: "1"`, `freeze_duck: "0"`
+     - Disconnect: `rc_service: "stop_wan"`, `wan_enable: "0"`, `wan0_enable: "0"`, `freeze_duck: "0"`
+2. **NVRAM Synchronization:**
+   - Synchronizes `dslx_link_enable`, `wan0_enable`, and `wan_enable` simultaneously. This prevents the Asus Web UI's Network Map (`internet.asp`, which reads `wan0_enable`) from displaying an inconsistent toggle state.
+3. **Why Not `device-map/wan_action.asp`:**
    - The Asus diagnostic endpoint `/device-map/wan_action.asp?wanaction=Disconnect` sets `freeze_duck=1`, freezing the `wanduck` watchdog daemon.
    - When `freeze_duck=1`, the router's Web UI enters a locked state and refuses to reconnect from the browser, requiring an SSH shell command (`service start_wan`) to recover.
    - By calling `applyapp.cgi` with `freeze_duck="0"`, `wanduck` remains active, NVRAM `wan_enable` is updated cleanly, and the Web UI continues to function normally.
-3. **Fallback Method:**
-   - If `async_api_command` raises an exception, the switch falls back to `api.async_run_service(service="start_wan"|"stop_wan", apply=True, expect_modify=False)`.
-4. **Optimistic State Management:**
+4. **Fallback Method:**
+   - If `async_api_command` raises an exception, the switch falls back to `api.async_run_service` passing the appropriate `service` and NVRAM argument dictionary.
+5. **Optimistic State Management:**
    - AussieBB VDSL PPPoE sessions require 2–5 seconds to tear down or re-negotiate.
    - Immediate coordinator refreshes were removed to prevent state bouncing.
    - `_handle_coordinator_update` maintains `_attr_is_on` until the coordinator's reported native telemetry matches the target state.
