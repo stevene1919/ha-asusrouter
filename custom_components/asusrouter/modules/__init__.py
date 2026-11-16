@@ -63,6 +63,7 @@ SWITCHES: tuple[ARSwitchDescription, ...] = (
     *parental_control.SWITCHES,
     *port_forwarding.SWITCHES,
     *vpn.SWITCHES,
+    *wan.SWITCHES,
     *wifi.SWITCHES,
 )
 TRACKERS: tuple[ARTrackerDescription, ...] = (*clients.TRACKERS,)

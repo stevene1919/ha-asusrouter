@@ -197,6 +197,12 @@
           "on": "mdi:lock-outline"
         }
       },
+      "internet": {
+        "default": "mdi:web-off",
+        "state": {
+          "on": "mdi:web"
+        }
+      },
       "network": {
         "default": "mdi:access-point-network-off",
         "state": {

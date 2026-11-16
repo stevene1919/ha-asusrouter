@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import timedelta
+import inspect
 from typing import TYPE_CHECKING, Any
 
 from asusrouter import AsusRouterError
@@ -342,19 +343,29 @@ class ARToggleEntity(AREntity):
         )
         return value
 
+    def _build_action(self, state: bool) -> ARAction:
+        """Build the action turning the entity on or off."""
+        fn = self.entity_description.action_fn
+        try:
+            parameters = inspect.signature(fn).parameters
+            if "bridge" in parameters:
+                bridge = getattr(
+                    self.coordinator.config_entry.runtime_data, "bridge", None
+                )
+                return fn(state, self._device_data, bridge=bridge)
+        except (ValueError, TypeError):
+            pass
+        return fn(state, self._device_data)
+
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on."""
 
-        await self._async_run_action(
-            self.entity_description.action_fn(True, self._device_data)
-        )
+        await self._async_run_action(self._build_action(True))
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the entity off."""
 
-        await self._async_run_action(
-            self.entity_description.action_fn(False, self._device_data)
-        )
+        await self._async_run_action(self._build_action(False))
 
 
 def get_supported[DescriptionT: AREntityDescription](

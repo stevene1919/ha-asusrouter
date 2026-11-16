@@ -21,7 +21,11 @@ from asusrouter.tools.identifiers.ip import IpAddress
 import pytest
 
 from custom_components.asusrouter.entity import AREntityDescription
-from custom_components.asusrouter.modules.wan import BINARY_SENSORS, SENSORS
+from custom_components.asusrouter.modules.wan import (
+    BINARY_SENSORS,
+    SENSORS,
+    SWITCHES,
+)
 
 
 def _get_ip(value: str) -> IpAddress:
@@ -325,3 +329,38 @@ def test_reported(key: str, wan: ARWan, expected: bool) -> None:
     assert description.exists_fn(wan) is expected
     assert description.available_fn is not None
     assert description.available_fn(wan) is expected
+
+
+def test_internet_switch() -> None:
+    """Test the internet switch action and state."""
+
+    assert len(SWITCHES) == 1
+    switch = SWITCHES[0]
+    assert switch.key == "internet"
+    assert switch.value_fn(WAN) is True
+
+    # Test non-DSL action
+    action = switch.action_fn(True, WAN)
+    assert action.services == ["start_wan"]
+    assert action.arguments["wan_enable"] == "1"
+
+    action = switch.action_fn(False, WAN)
+    assert action.services == ["stop_wan"]
+    assert action.arguments["wan_enable"] == "0"
+
+    # Test DSL action
+    class MockIdentity:
+        model = "DSL-AX82U"
+
+    class MockBridge:
+        identity = MockIdentity()
+
+    action = switch.action_fn(True, WAN, bridge=MockBridge())
+    assert action.services == ["start_dslwan_if 0"]
+    assert action.arguments["dslx_link_enable"] == "1"
+    assert action.arguments["wan_enable"] == "1"
+
+    action = switch.action_fn(False, WAN, bridge=MockBridge())
+    assert action.services == ["stop_dslwan_if 0"]
+    assert action.arguments["dslx_link_enable"] == "0"
+    assert action.arguments["wan_enable"] == "0"

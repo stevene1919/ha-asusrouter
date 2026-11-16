@@ -9,6 +9,7 @@ from asusrouter.modules.common.connection import (
     ARConnectionMethod,
     ARConnectionStatus,
 )
+from asusrouter.modules.service.action import ARServiceAction
 from asusrouter.modules.wan import (
     ARDualWanMode,
     ARWan,
@@ -17,9 +18,14 @@ from asusrouter.modules.wan import (
     ARWanUnit,
 )
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass
+from homeassistant.components.switch import SwitchDeviceClass
 from homeassistant.const import EntityCategory
 
-from ..entity import ARBinarySensorDescription, ARSensorDescription
+from ..entity import (
+    ARBinarySensorDescription,
+    ARSensorDescription,
+    ARSwitchDescription,
+)
 from ..helpers import to_str
 
 UPDATE_INTERVAL = timedelta(seconds=30)
@@ -191,4 +197,63 @@ SENSORS: tuple[ARSensorDescription, ...] = tuple(
     _get_address_sensor(*unit, extra=extra)
     for extra in (False, True)
     for unit in _UNITS
+)
+
+
+def _wan_action(
+    state: bool,
+    data: Any,
+    bridge: Any | None = None,
+) -> ARServiceAction:
+    """Build the action to connect or disconnect WAN."""
+
+    is_dsl = False
+    if bridge and hasattr(bridge, "identity") and bridge.identity.model:
+        is_dsl = "dsl" in bridge.identity.model.lower()
+    elif (
+        isinstance(data, ARWan)
+        and data.dualwan
+        and "dsl" in data.dualwan.capability
+    ):
+        is_dsl = True
+
+    service = (
+        ("start_dslwan_if 0" if state else "stop_dslwan_if 0")
+        if is_dsl
+        else ("start_wan" if state else "stop_wan")
+    )
+    val = "1" if state else "0"
+    args = {
+        "action_script": service,
+        "wan_enable": val,
+        "wan0_enable": val,
+        "freeze_duck": "0",
+    }
+    if is_dsl:
+        args["dslx_link_enable"] = val
+
+    return ARServiceAction(service, arguments=args)
+
+
+SWITCHES: tuple[ARSwitchDescription, ...] = (
+    ARSwitchDescription(
+        key="internet",
+        translation_key="internet",
+        unique_id_name="Internet",
+        source=ARWanSourceUniversal,
+        update_interval=UPDATE_INTERVAL,
+        data_fn=_get_wan,
+        value_fn=lambda wan: (
+            wan.internet_status is ARConnectionStatus.CONNECTED
+            if isinstance(wan, ARWan)
+            else None
+        ),
+        available_fn=lambda wan: (
+            isinstance(wan, ARWan)
+            and wan.internet_status is not ARConnectionStatus.UNKNOWN
+        ),
+        action_fn=_wan_action,
+        device_class=SwitchDeviceClass.SWITCH,
+        entity_category=EntityCategory.CONFIG,
+    ),
 )

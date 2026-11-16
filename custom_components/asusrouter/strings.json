@@ -525,6 +525,9 @@
       "block_internet": {
         "name": "Block Internet"
       },
+      "internet": {
+        "name": "Internet"
+      },
       "network": {
         "name": "Network {name}",
         "state_attributes": {

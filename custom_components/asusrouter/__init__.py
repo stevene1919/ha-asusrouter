@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from functools import partial
+import logging
 from typing import TYPE_CHECKING, Any
 
 from asusrouter import AsusRouterError
@@ -12,7 +13,15 @@ from asusrouter.modules.aimesh import ARAiMeshSourceUniversal
 from asusrouter.modules.source import ARDataSource
 from asusrouter.tools.identifiers import MacAddress
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST, EVENT_HOMEASSISTANT_STOP, Platform
+from homeassistant.const import (
+    CONF_HOST,
+    CONF_PASSWORD,
+    CONF_PORT,
+    CONF_SSL,
+    CONF_USERNAME,
+    EVENT_HOMEASSISTANT_STOP,
+    Platform,
+)
 from homeassistant.core import Event, HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
@@ -38,6 +47,8 @@ from .topology import (
 
 if TYPE_CHECKING:
     from .entity import AREntityDescription
+
+_LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
@@ -182,3 +193,31 @@ async def async_remove_entry(
     """Remove AsusRouter config entry."""
 
     async_hand_back(hass, config_entry)
+
+
+async def async_migrate_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+) -> bool:
+    """Migrate old entry."""
+
+    _LOGGER.debug("Migrating entry from version %s", config_entry.version)
+
+    if config_entry.version < 6:  # noqa: PLR2004
+        new_data = dict(config_entry.data)
+        new_options = dict(config_entry.options)
+
+        # Move credentials and connection settings from options to data
+        for key in (CONF_USERNAME, CONF_PASSWORD, CONF_PORT, CONF_SSL):
+            if key in new_options and key not in new_data:
+                new_data[key] = new_options.pop(key)
+
+        hass.config_entries.async_update_entry(
+            config_entry,
+            data=new_data,
+            options=new_options,
+            version=6,
+        )
+        _LOGGER.info("Successfully migrated AsusRouter entry to version 6")
+
+    return True
