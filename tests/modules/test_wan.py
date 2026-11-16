@@ -339,28 +339,20 @@ def test_internet_switch() -> None:
     assert switch.key == "internet"
     assert switch.value_fn(WAN) is True
 
-    # Test non-DSL action
+    # Test turn on action
     action = switch.action_fn(True, WAN)
-    assert action.services == ["start_wan"]
+    assert action.services == ["restart_wan_if 0"]
+    assert action.arguments["action_script"] == "restart_wan_if"
     assert action.arguments["wan_enable"] == "1"
+    assert action.arguments["wan0_enable"] == "1"
+    assert action.arguments["wan_unit"] == "0"
+    assert action.arguments["freeze_duck"] == "0"
 
+    # Test turn off action
     action = switch.action_fn(False, WAN)
-    assert action.services == ["stop_wan"]
+    assert action.services == ["restart_wan_if 0"]
+    assert action.arguments["action_script"] == "restart_wan_if"
     assert action.arguments["wan_enable"] == "0"
-
-    # Test DSL action
-    class MockIdentity:
-        model = "DSL-AX82U"
-
-    class MockBridge:
-        identity = MockIdentity()
-
-    action = switch.action_fn(True, WAN, bridge=MockBridge())
-    assert action.services == ["start_dslwan_if 0"]
-    assert action.arguments["dslx_link_enable"] == "1"
-    assert action.arguments["wan_enable"] == "1"
-
-    action = switch.action_fn(False, WAN, bridge=MockBridge())
-    assert action.services == ["stop_dslwan_if 0"]
-    assert action.arguments["dslx_link_enable"] == "0"
-    assert action.arguments["wan_enable"] == "0"
+    assert action.arguments["wan0_enable"] == "0"
+    assert action.arguments["wan_unit"] == "0"
+    assert action.arguments["freeze_duck"] == "0"

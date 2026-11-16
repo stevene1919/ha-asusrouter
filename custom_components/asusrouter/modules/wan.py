@@ -306,30 +306,15 @@ def _wan_action(
 ) -> ARServiceAction:
     """Build the action to connect or disconnect WAN."""
 
-    is_dsl = False
-    if bridge and hasattr(bridge, "identity") and bridge.identity.model:
-        is_dsl = "dsl" in bridge.identity.model.lower()
-    elif (
-        isinstance(data, ARWan)
-        and data.dualwan
-        and "dsl" in data.dualwan.capability
-    ):
-        is_dsl = True
-
-    service = (
-        ("start_dslwan_if 0" if state else "stop_dslwan_if 0")
-        if is_dsl
-        else ("start_wan" if state else "stop_wan")
-    )
     val = "1" if state else "0"
+    service = "restart_wan_if 0"
     args = {
-        "action_script": service,
+        "action_script": "restart_wan_if",
         "wan_enable": val,
         "wan0_enable": val,
+        "wan_unit": "0",
         "freeze_duck": "0",
     }
-    if is_dsl:
-        args["dslx_link_enable"] = val
 
     return ARServiceAction(service, arguments=args)
 
