@@ -9,7 +9,9 @@ from asusrouter.modules.common.connection import (
     ARConnectionMethod,
     ARConnectionStatus,
 )
+from asusrouter.modules.endpoint import AREndpoint
 from asusrouter.modules.service.action import ARServiceAction
+from asusrouter.modules.source import ARDataSource
 from asusrouter.modules.wan import (
     ARDualWanMode,
     ARWan,
@@ -17,6 +19,8 @@ from asusrouter.modules.wan import (
     ARWanSourceUniversal,
     ARWanUnit,
 )
+from asusrouter.registry import ARCallableRegistry as ARCallReg
+from asusrouter.tools.types import ARCallbackType
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass
 from homeassistant.components.switch import SwitchDeviceClass
 from homeassistant.const import EntityCategory
@@ -193,10 +197,105 @@ BINARY_SENSORS: tuple[ARBinarySensorDescription, ...] = (
     ),
 )
 
-SENSORS: tuple[ARSensorDescription, ...] = tuple(
-    _get_address_sensor(*unit, extra=extra)
-    for extra in (False, True)
-    for unit in _UNITS
+class ARNetworkIPSource(ARDataSource):
+    """Source for WAN IPv6, LAN IPv4, and LAN IPv6."""
+
+
+ARNetworkIPSourceUniversal = ARNetworkIPSource()
+
+
+async def fetch_ip_state(
+    callback: ARCallbackType,
+    source: ARNetworkIPSource,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Fetch WAN IPv6 and LAN IPs."""
+
+    hook = (
+        "nvram_get(ipv6_wan_addr);nvram_get(ipv6_prefix);"
+        "nvram_get(ipv6_gateway);nvram_get(lan_ipaddr);"
+        "nvram_get(lan_netmask);nvram_get(ipv6_rtr_addr);"
+        "nvram_get(ipv6_prefix_length)"
+    )
+    data = await callback(
+        endpoint=AREndpoint.FETCH_DATA, request=f"hook={hook}"
+    )
+    return data if isinstance(data, dict) else {}
+
+
+def translate_ip_state(data: Any, **kwargs: Any) -> dict[str, Any]:
+    """Translate IP state dict."""
+
+    return data if isinstance(data, dict) else {}
+
+
+def _get_ip_data(data: Any) -> dict[str, Any] | None:
+    """Get IP data, None when empty or unread."""
+
+    return data if isinstance(data, dict) and data else None
+
+
+ARCallReg.register_source(
+    ARNetworkIPSource,
+    fetch_state=fetch_ip_state,
+    translate_state=translate_ip_state,
+)
+
+SENSORS: tuple[ARSensorDescription, ...] = (
+    *(
+        _get_address_sensor(*unit, extra=extra)
+        for extra in (False, True)
+        for unit in _UNITS
+    ),
+    ARSensorDescription(
+        key="wan_ipv6",
+        translation_key="wan_ipv6",
+        unique_id_name="WAN IPv6",
+        source=ARNetworkIPSourceUniversal,
+        update_interval=UPDATE_INTERVAL,
+        data_fn=_get_ip_data,
+        value_fn=lambda data: (
+            data.get("ipv6_wan_addr", "").partition("/")[0] or None
+        ),
+        attributes_fn=lambda data: {
+            "prefix": data.get("ipv6_prefix"),
+            "prefix_length": data.get("ipv6_prefix_length"),
+            "gateway": data.get("ipv6_gateway"),
+            "cidr": data.get("ipv6_wan_addr"),
+        },
+        available_fn=lambda data: bool(data and data.get("ipv6_wan_addr")),
+        exists_fn=lambda data: bool(data and data.get("ipv6_wan_addr")),
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    ARSensorDescription(
+        key="lan_ip",
+        translation_key="lan_ip",
+        unique_id_name="LAN IP",
+        source=ARNetworkIPSourceUniversal,
+        update_interval=UPDATE_INTERVAL,
+        data_fn=_get_ip_data,
+        value_fn=lambda data: data.get("lan_ipaddr") or None,
+        attributes_fn=lambda data: {"netmask": data.get("lan_netmask")},
+        available_fn=lambda data: bool(data and data.get("lan_ipaddr")),
+        exists_fn=lambda data: bool(data and data.get("lan_ipaddr")),
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    ARSensorDescription(
+        key="lan_ipv6",
+        translation_key="lan_ipv6",
+        unique_id_name="LAN IPv6",
+        source=ARNetworkIPSourceUniversal,
+        update_interval=UPDATE_INTERVAL,
+        data_fn=_get_ip_data,
+        value_fn=lambda data: data.get("ipv6_rtr_addr") or None,
+        attributes_fn=lambda data: {
+            "prefix": data.get("ipv6_prefix"),
+            "prefix_length": data.get("ipv6_prefix_length"),
+        },
+        available_fn=lambda data: bool(data and data.get("ipv6_rtr_addr")),
+        exists_fn=lambda data: bool(data and data.get("ipv6_rtr_addr")),
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
 )
 
 

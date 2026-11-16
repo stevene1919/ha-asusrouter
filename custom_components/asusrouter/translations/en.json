@@ -503,6 +503,42 @@
           }
         }
       },
+      "wan_ipv6": {
+        "name": "WAN IPv6",
+        "state_attributes": {
+          "prefix": {
+            "name": "Prefix"
+          },
+          "prefix_length": {
+            "name": "Prefix length"
+          },
+          "gateway": {
+            "name": "Gateway"
+          },
+          "cidr": {
+            "name": "CIDR"
+          }
+        }
+      },
+      "lan_ip": {
+        "name": "LAN IP",
+        "state_attributes": {
+          "netmask": {
+            "name": "Netmask"
+          }
+        }
+      },
+      "lan_ipv6": {
+        "name": "LAN IPv6",
+        "state_attributes": {
+          "prefix": {
+            "name": "Prefix"
+          },
+          "prefix_length": {
+            "name": "Prefix length"
+          }
+        }
+      },
       "wireguard_client_state": {
         "name": "WireGuard client {name} state",
         "state": {

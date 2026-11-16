@@ -180,6 +180,15 @@
       "wan_ip_secondary_extra": {
         "default": "mdi:ip"
       },
+      "wan_ipv6": {
+        "default": "mdi:ip-network"
+      },
+      "lan_ip": {
+        "default": "mdi:ip-network-outline"
+      },
+      "lan_ipv6": {
+        "default": "mdi:ip-network"
+      },
       "wireguard_client_state": {
         "default": "mdi:close-network-outline",
         "state": {
