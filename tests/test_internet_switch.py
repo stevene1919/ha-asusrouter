@@ -2,7 +2,6 @@
 
 from unittest.mock import AsyncMock, MagicMock
 
-from asusrouter.connection import RequestType
 from homeassistant.components.switch import SwitchDeviceClass
 from homeassistant.const import EntityCategory
 import pytest
@@ -19,10 +18,7 @@ def mock_router():
     router.device_info = {"identifiers": {("asusrouter", "AA:BB:CC:DD:EE:FF")}}
     router.bridge = MagicMock()
     router.bridge.api = MagicMock()
-    router.bridge.api._connection = MagicMock()
-    router.bridge.api._connection.async_query = AsyncMock(
-        return_value=(200, {}, "OK")
-    )
+    router.bridge.api.async_api_command = AsyncMock(return_value=True)
     router.bridge.api.async_run_service = AsyncMock(return_value=True)
     return router
 
@@ -75,11 +71,14 @@ async def test_internet_switch_turn_on(mock_coordinator, mock_router):
     await switch.async_turn_on()
 
     assert switch.is_on is True
-    mock_router.bridge.api._connection.async_query.assert_awaited_once()
-    call_args = mock_router.bridge.api._connection.async_query.call_args
-    assert call_args.kwargs["payload"] == "wanaction=Connect"
-    assert call_args.kwargs["request_type"] == RequestType.GET
-    mock_coordinator.async_request_refresh.assert_awaited_once()
+    mock_router.bridge.api.async_api_command.assert_awaited_once_with(
+        {
+            "action_mode": "apply",
+            "rc_service": "start_wan",
+            "wan_enable": "1",
+            "freeze_duck": "0",
+        }
+    )
 
 
 @pytest.mark.asyncio
@@ -92,20 +91,51 @@ async def test_internet_switch_turn_off(mock_coordinator, mock_router):
     await switch.async_turn_off()
 
     assert switch.is_on is False
-    mock_router.bridge.api._connection.async_query.assert_awaited_once()
-    call_args = mock_router.bridge.api._connection.async_query.call_args
-    assert call_args.kwargs["payload"] == "wanaction=Disconnect"
-    assert call_args.kwargs["request_type"] == RequestType.GET
-    mock_coordinator.async_request_refresh.assert_awaited_once()
+    mock_router.bridge.api.async_api_command.assert_awaited_once_with(
+        {
+            "action_mode": "apply",
+            "rc_service": "stop_wan",
+            "wan_enable": "0",
+            "freeze_duck": "0",
+        }
+    )
+
+
+@pytest.mark.asyncio
+async def test_internet_switch_optimistic_state_holding(
+    mock_coordinator, mock_router
+):
+    """Test that optimistic state is preserved until coordinator agrees."""
+    mock_coordinator.data = {"internet_link": True}
+    switch = ARInternetSwitch(mock_coordinator, mock_router)
+    switch.async_write_ha_state = MagicMock()
+
+    await switch.async_turn_off()
+    assert switch.is_on is False
+
+    # Intermediate update where coordinator still reports True
+    # (WAN tearing down)
+    mock_coordinator.data = {"internet_link": True}
+    switch._handle_coordinator_update()
+    # Switch should STILL be False (not bouncing back to True)
+    assert switch.is_on is False
+    assert switch._attr_is_on is False
+
+    # Eventual update where coordinator reports False (WAN fully stopped)
+    mock_coordinator.data = {"internet_link": False}
+    switch._handle_coordinator_update()
+    # Switch matches, optimistic attribute cleared, native state is False
+    assert switch.is_on is False
+    assert switch._attr_is_on is None
 
 
 @pytest.mark.asyncio
 async def test_internet_switch_fallback_on_error(
     mock_coordinator, mock_router
 ):
-    """Test fallback to async_run_service when wan_action.asp fails."""
-    mock_router.bridge.api._connection.async_query.side_effect = Exception(
-        "Connection refused"
+    """Test fallback to async_run_service when async_api_command fails."""
+    mock_router.bridge.api.async_api_command.side_effect = Exception(
+        "API command error"
     )
     switch = ARInternetSwitch(mock_coordinator, mock_router)
     switch.async_write_ha_state = MagicMock()
@@ -113,6 +143,25 @@ async def test_internet_switch_fallback_on_error(
     await switch.async_turn_on()
 
     mock_router.bridge.api.async_run_service.assert_awaited_once_with(
-        service="start_wan", apply=True
+        service="start_wan",
+        apply=True,
+        expect_modify=False,
     )
-    mock_coordinator.async_request_refresh.assert_awaited_once()
+    assert switch.is_on is True
+
+
+@pytest.mark.asyncio
+async def test_internet_switch_revert_on_total_failure(
+    mock_coordinator, mock_router
+):
+    """Test state reverts when both primary and fallback methods fail."""
+    mock_coordinator.data = {"internet_link": True}
+    mock_router.bridge.api.async_api_command.side_effect = Exception("fail")
+    mock_router.bridge.api.async_run_service.side_effect = Exception("fail")
+    switch = ARInternetSwitch(mock_coordinator, mock_router)
+    switch.async_write_ha_state = MagicMock()
+
+    await switch.async_turn_off()
+
+    # Reverted back to True
+    assert switch.is_on is True

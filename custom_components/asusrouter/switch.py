@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from asusrouter.connection import RequestType
 from asusrouter.modules.homeassistant import convert_to_ha_state_bool
 from asusrouter.modules.parental_control import ParentalControlRule, PCRuleType
 from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity
@@ -282,12 +281,6 @@ class ClientInternetSwitch(SwitchEntity):
         )
 
 
-class WanActionEndpoint:
-    """Endpoint representation for Asuswrt device-map/wan_action.asp."""
-
-    value = "device-map/wan_action.asp"
-
-
 class ARInternetSwitch(ARBinaryEntity, SwitchEntity):
     """AsusRouter Internet connect/disconnect switch."""
 
@@ -313,12 +306,8 @@ class ARInternetSwitch(ARBinaryEntity, SwitchEntity):
         self.entity_description: ARSwitchDescription = description
         self._attr_is_on: bool | None = None
 
-    @property
-    def is_on(self) -> bool | None:
-        """Get the switch state."""
-        if self._attr_is_on is not None:
-            return self._attr_is_on
-
+    def _get_native_state(self) -> bool | None:
+        """Get native state from coordinator data."""
         if self.coordinator.data:
             state = self.coordinator.data.get("internet_link")
             if state is not None:
@@ -326,45 +315,68 @@ class ARInternetSwitch(ARBinaryEntity, SwitchEntity):
             state_0 = self.coordinator.data.get("0_state")
             if state_0 is not None:
                 return convert_to_ha_state_bool(state_0)
-
         return None
+
+    @property
+    def is_on(self) -> bool | None:
+        """Get the switch state."""
+        if self._attr_is_on is not None:
+            return self._attr_is_on
+
+        return self._get_native_state()
 
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        self._attr_is_on = None
+        if self._attr_is_on is not None:
+            native = self._get_native_state()
+            if native is not None and native == self._attr_is_on:
+                self._attr_is_on = None
         super()._handle_coordinator_update()
 
     async def _async_trigger_wan_action(self, action: str) -> bool:
         """Trigger WAN action (Connect or Disconnect)."""
-        _LOGGER.debug("Sending WAN action: %s", action)
+        is_connect = action == "Connect"
+        service = "start_wan" if is_connect else "stop_wan"
+        wan_enable = "1" if is_connect else "0"
 
-        # Primary method: Asuswrt Web UI device-map/wan_action.asp
+        _LOGGER.debug(
+            "Triggering WAN %s: service=%s, wan_enable=%s",
+            action,
+            service,
+            wan_enable,
+        )
+
+        # Primary method: applyapp.cgi with rc_service,
+        # wan_enable, freeze_duck=0
         try:
-            await self.api._connection.async_query(
-                endpoint=WanActionEndpoint(),  # type: ignore[arg-type]
-                payload=f"wanaction={action}",
-                request_type=RequestType.GET,
-            )
+            commands = {
+                "action_mode": "apply",
+                "rc_service": service,
+                "wan_enable": wan_enable,
+                "freeze_duck": "0",
+            }
             _LOGGER.info(
-                "Successfully executed WAN action `%s` via wan_action.asp",
+                "Executing WAN %s via async_api_command: %s",
                 action,
+                commands,
             )
+            await self.api.async_api_command(commands)
             return True
         except Exception as ex:  # noqa: BLE001
             _LOGGER.warning(
-                "WAN action `%s` via wan_action.asp failed: %s. "
-                "Attempting fallback via service call",
+                "WAN action `%s` via async_api_command failed: %s. "
+                "Attempting fallback via async_run_service",
                 action,
                 ex,
             )
 
         # Fallback method: rc_service call via applyapp.cgi
         try:
-            service = "start_wan" if action == "Connect" else "stop_wan"
             result = await self.api.async_run_service(
                 service=service,
                 apply=True,
+                expect_modify=False,
             )
             _LOGGER.info(
                 "Executed WAN fallback service `%s`: result=%s",
@@ -389,9 +401,6 @@ class ARInternetSwitch(ARBinaryEntity, SwitchEntity):
         if not success:
             self._attr_is_on = False
             self.async_write_ha_state()
-            return
-
-        await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Disconnect from the Internet."""
@@ -402,7 +411,5 @@ class ARInternetSwitch(ARBinaryEntity, SwitchEntity):
         if not success:
             self._attr_is_on = True
             self.async_write_ha_state()
-            return
 
-        await self.coordinator.async_request_refresh()
 
