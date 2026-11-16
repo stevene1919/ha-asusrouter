@@ -11,12 +11,28 @@ from custom_components.asusrouter.switch import ARInternetSwitch
 
 @pytest.fixture
 def mock_router():
-    """Create a mock ARDevice."""
+    """Create a mock ARDevice for a DSL router."""
     router = MagicMock()
     router._conf_name = "DSL-AX82U"
     router.mac = "AA:BB:CC:DD:EE:FF"
     router.device_info = {"identifiers": {("asusrouter", "AA:BB:CC:DD:EE:FF")}}
     router.bridge = MagicMock()
+    router.bridge.model = "DSL-AX82U"
+    router.bridge.api = MagicMock()
+    router.bridge.api.async_api_command = AsyncMock(return_value=True)
+    router.bridge.api.async_run_service = AsyncMock(return_value=True)
+    return router
+
+
+@pytest.fixture
+def mock_non_dsl_router():
+    """Create a mock ARDevice for a non-DSL router."""
+    router = MagicMock()
+    router._conf_name = "RT-AX88U"
+    router.mac = "11:22:33:44:55:66"
+    router.device_info = {"identifiers": {("asusrouter", "11:22:33:44:55:66")}}
+    router.bridge = MagicMock()
+    router.bridge.model = "RT-AX88U"
     router.bridge.api = MagicMock()
     router.bridge.api.async_api_command = AsyncMock(return_value=True)
     router.bridge.api.async_run_service = AsyncMock(return_value=True)
@@ -62,8 +78,8 @@ def test_internet_switch_is_on_fallback(mock_coordinator, mock_router):
 
 
 @pytest.mark.asyncio
-async def test_internet_switch_turn_on(mock_coordinator, mock_router):
-    """Test turning on the internet switch."""
+async def test_internet_switch_turn_on_dsl(mock_coordinator, mock_router):
+    """Test turning on internet on a DSL router."""
     mock_coordinator.data = {"internet_link": False}
     switch = ARInternetSwitch(mock_coordinator, mock_router)
     switch.async_write_ha_state = MagicMock()
@@ -74,16 +90,19 @@ async def test_internet_switch_turn_on(mock_coordinator, mock_router):
     mock_router.bridge.api.async_api_command.assert_awaited_once_with(
         {
             "action_mode": "apply",
-            "rc_service": "start_wan",
+            "rc_service": "start_dslwan_if 0",
+            "action_script": "start_dslwan_if 0",
             "wan_enable": "1",
+            "wan0_enable": "1",
+            "dslx_link_enable": "1",
             "freeze_duck": "0",
         }
     )
 
 
 @pytest.mark.asyncio
-async def test_internet_switch_turn_off(mock_coordinator, mock_router):
-    """Test turning off the internet switch."""
+async def test_internet_switch_turn_off_dsl(mock_coordinator, mock_router):
+    """Test turning off internet on a DSL router."""
     mock_coordinator.data = {"internet_link": True}
     switch = ARInternetSwitch(mock_coordinator, mock_router)
     switch.async_write_ha_state = MagicMock()
@@ -94,8 +113,35 @@ async def test_internet_switch_turn_off(mock_coordinator, mock_router):
     mock_router.bridge.api.async_api_command.assert_awaited_once_with(
         {
             "action_mode": "apply",
-            "rc_service": "stop_wan",
+            "rc_service": "stop_dslwan_if 0",
+            "action_script": "stop_dslwan_if 0",
             "wan_enable": "0",
+            "wan0_enable": "0",
+            "dslx_link_enable": "0",
+            "freeze_duck": "0",
+        }
+    )
+
+
+@pytest.mark.asyncio
+async def test_internet_switch_turn_on_non_dsl(
+    mock_coordinator, mock_non_dsl_router
+):
+    """Test turning on internet on a standard Ethernet router."""
+    mock_coordinator.data = {"internet_link": False}
+    switch = ARInternetSwitch(mock_coordinator, mock_non_dsl_router)
+    switch.async_write_ha_state = MagicMock()
+
+    await switch.async_turn_on()
+
+    assert switch.is_on is True
+    mock_non_dsl_router.bridge.api.async_api_command.assert_awaited_once_with(
+        {
+            "action_mode": "apply",
+            "rc_service": "start_wan",
+            "action_script": "start_wan",
+            "wan_enable": "1",
+            "wan0_enable": "1",
             "freeze_duck": "0",
         }
     )
@@ -143,7 +189,13 @@ async def test_internet_switch_fallback_on_error(
     await switch.async_turn_on()
 
     mock_router.bridge.api.async_run_service.assert_awaited_once_with(
-        service="start_wan",
+        service="start_dslwan_if 0",
+        arguments={
+            "wan_enable": "1",
+            "wan0_enable": "1",
+            "dslx_link_enable": "1",
+            "freeze_duck": "0",
+        },
         apply=True,
         expect_modify=False,
     )

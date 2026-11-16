@@ -334,28 +334,51 @@ class ARInternetSwitch(ARBinaryEntity, SwitchEntity):
                 self._attr_is_on = None
         super()._handle_coordinator_update()
 
+    def _is_dsl_router(self) -> bool:
+        """Determine if router is a DSL model."""
+        if hasattr(self.router, "bridge") and self.router.bridge:
+            model = getattr(self.router.bridge, "model", "") or ""
+            if "dsl" in model.lower():
+                return True
+        if hasattr(self.router, "_conf_name"):
+            conf_name = self.router._conf_name or ""
+            if "dsl" in conf_name.lower():
+                return True
+        return False
+
     async def _async_trigger_wan_action(self, action: str) -> bool:
         """Trigger WAN action (Connect or Disconnect)."""
         is_connect = action == "Connect"
-        service = "start_wan" if is_connect else "stop_wan"
+        is_dsl = self._is_dsl_router()
+        service = (
+            ("start_dslwan_if 0" if is_connect else "stop_dslwan_if 0")
+            if is_dsl
+            else ("start_wan" if is_connect else "stop_wan")
+        )
         wan_enable = "1" if is_connect else "0"
 
         _LOGGER.debug(
-            "Triggering WAN %s: service=%s, wan_enable=%s",
+            "Triggering WAN %s: is_dsl=%s, service=%s, wan_enable=%s",
             action,
+            is_dsl,
             service,
             wan_enable,
         )
 
-        # Primary method: applyapp.cgi with rc_service,
-        # wan_enable, freeze_duck=0
+        # Primary method: applyapp.cgi with rc_service, action_script,
+        # wan_enable, wan0_enable, dslx_link_enable, freeze_duck=0
         try:
             commands = {
                 "action_mode": "apply",
                 "rc_service": service,
+                "action_script": service,
                 "wan_enable": wan_enable,
+                "wan0_enable": wan_enable,
                 "freeze_duck": "0",
             }
+            if is_dsl:
+                commands["dslx_link_enable"] = wan_enable
+
             _LOGGER.info(
                 "Executing WAN %s via async_api_command: %s",
                 action,
@@ -373,8 +396,17 @@ class ARInternetSwitch(ARBinaryEntity, SwitchEntity):
 
         # Fallback method: rc_service call via applyapp.cgi
         try:
+            fallback_arguments = {
+                "wan_enable": wan_enable,
+                "wan0_enable": wan_enable,
+                "freeze_duck": "0",
+            }
+            if is_dsl:
+                fallback_arguments["dslx_link_enable"] = wan_enable
+
             result = await self.api.async_run_service(
                 service=service,
+                arguments=fallback_arguments,
                 apply=True,
                 expect_modify=False,
             )
